@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glowing Orb Scene</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ammo.js@0.0.10/builds/ammo.wasm.js"></script>
+    <script type="module">
+        import init from './physics.js';
+
+        let scene, camera, renderer, orb, switchMesh, pictureMesh, particles, roomLight, orbLight;
+        let physicsWorld, orbBody, switchPressed = false;
+        let mouse = { x: 0, y: 0 };
+
+        // Initialize Three.js scene
+        function initScene() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 10);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000);
+            document.body.appendChild(renderer.domElement);
+
+            // Room geometry (a large cube)
+            const roomGeometry = new THREE.BoxGeometry(20, 20, 20);
+            const roomMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, side: THREE.BackSide });
+            const room = new THREE.Mesh(roomGeometry, roomMaterial);
+            scene.add(room);
+
+            // Glowing orb
+            const orbGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+            const orbMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                emissive: 0x00ffcc,
+                emissiveIntensity: 2,
+                metalness: 0.5,
+                roughness: 0.2
+            });
+            orb = new THREE.Mesh(orbGeometry, orbMaterial);
+            orb.position.set(0, 5, 0);
+            scene.add(orb);
+
+            // Orb light
+            orbLight = new THREE.PointLight(0x00ffcc, 2, 10);
+            orb.add(orbLight);
+
+            // Switch
+            const switchGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.2);
+            const switchMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000, transparent: true, opacity: 0 });
+            switchMesh = new THREE.Mesh(switchGeometry, switchMaterial);
+            switchMesh.position.set(5, 0.5, -9.5);
+            scene.add(switchMesh);
+
+            // Picture
+            const textureLoader = new THREE.TextureLoader();
+            const pictureTexture = textureLoader.load('assets/picture.jpg');
+            const pictureGeometry = new THREE.PlaneGeometry(5, 5);
+            const pictureMaterial = new THREE.MeshStandardMaterial({ map: pictureTexture, transparent: true, opacity: 0 });
+            pictureMesh = new THREE.Mesh(pictureGeometry, pictureMaterial);
+            pictureMesh.position.set(0, 5, -9.8);
+            scene.add(pictureMesh);
+
+            // Room light
+            roomLight = new THREE.AmbientLight(0xffffff, 0);
+            scene.add(roomLight);
+
+            // Light particles
+            const particleGeometry = new THREE.BufferGeometry();
+            const particleCount = 100;
+            const positions = new Float32Array(particleCount * 3);
+            const velocities = new Float32Array(particleCount * 3);
+            for (let i = 0; i < particleCount; i++) {
+                positions[i * 3] = Math.random() * 20 - 10;
+                positions[i * 3 + 1] = Math.random() * 20 - 10;
+                positions[i * 3 + 2] = Math.random() * 20 - 10;
+                velocities[i * 3] = (Math.random() - 0.5) * 0.1;
+                velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.1;
+                velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.1;
+            }
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const particleMaterial = new THREE.PointsMaterial({
+                color: 0xffff99,
+                size: 0.1,
+                transparent: true,
+                opacity: 0,
+                blending: THREE.AdditiveBlending
+            });
+            particles = new THREE.Points(particleGeometry, particleMaterial);
+            scene.add(particles);
+
+            // Mouse movement
+            document.addEventListener('mousemove', (event) => {
+                mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            });
+
+            // Click to interact with switch
+            document.addEventListener('click', () => {
+                if (!switchPressed && switchMesh.material.opacity > 0.5) {
+                    switchPressed = true;
+                    // Smoothly increase room light
+                    new TWEEN.Tween(roomLight)
+                        .to({ intensity: 1 }, 2000)
+                        .easing(TWEEN.Easing.Quadratic.InOut)
+                        .start();
+                    // Show picture
+                    new TWEEN.Tween(pictureMesh.material)
+                        .to({ opacity: 1 }, 2000)
+                        .easing(TWEEN.Easing.Quadratic.InOut)
+                        .start();
+                    // Show particles
+                    new TWEEN.Tween(particles.material)
+                        .to({ opacity: 0.8 }, 2000)
+                        .easing(TWEEN.Easing.Quadratic.InOut)
+                        .start();
+                }
+            });
+
+            window.addEventListener('resize', () => {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+            });
+        }
+
+        // Initialize physics with Ammo.js
+        async function initPhysics() {
+            await Ammo();
+            const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
+            const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
+            const broadphase = new Ammo.btDbvtBroadphase();
+            const solver = new Ammo.btSequentialImpulseConstraintSolver();
+            physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfiguration);
+            physicsWorld.setGravity(new Ammo.btVector3(0, -9.81, 0));
+
+            // Ground
+            const groundShape = new Ammo.btBoxShape(new Ammo.btVector3(10, 0.5, 10));
+            const groundTransform = new Ammo.btTransform();
+            groundTransform.setIdentity();
+            groundTransform.setOrigin(new Ammo.btVector3(0, -0.5, 0));
+            const groundMass = 0;
+            const groundLocalInertia = new Ammo.btVector3(0, 0, 0);
+            const groundMotionState = new Ammo.btDefaultMotionState(groundTransform);
+            const groundBody = new Ammo.btRigidBody(new Ammo.btRigidBodyConstructionInfo(groundMass, groundMotionState, groundShape, groundLocalInertia));
+            physicsWorld.addRigidBody(groundBody);
+
+            // Orb
+            const orbShape = new Ammo.btSphereShape(0.5);
+            const orbTransform = new Ammo.btTransform();
+            orbTransform.setIdentity();
+            orbTransform.setOrigin(new Ammo.btVector3(0, 5, 0));
+            const orbMass = 1;
+            const orbLocalInertia = new Ammo.btVector3(0, 0, 0);
+            orbShape.calculateLocalInertia(orbMass, orbLocalInertia);
+            const orbMotionState = new Ammo.btDefaultMotionState(orbTransform);
+            const orbBodyInfo = new Ammo.btRigidBodyConstructionInfo(orbMass, orbMotionState, orbShape, orbLocalInertia);
+            orbBody = new Ammo.btRigidBody(orbBodyInfo);
+            physicsWorld.addRigidBody(orbBody);
+
+            // Load WebAssembly physics module
+            init().then((Module) => {
+                animate(Module);
+            });
+        }
+
+        // Animation loop
+        function animate(Module) {
+            requestAnimationFrame(() => animate(Module));
+            physicsWorld.stepSimulation(1 / 60, 10);
+
+            // Update orb position
+            const orbTransform = orbBody.getWorldTransform();
+            const orbOrigin = orbTransform.getOrigin();
+            orb.position.set(orbOrigin.x(), orbOrigin.y(), orbOrigin.z());
+
+            // Check proximity to switch
+            const distance = orb.position.distanceTo(switchMesh.position);
+            switchMesh.material.opacity = THREE.MathUtils.lerp(0, 1, Math.max(0, (5 - distance) / 5));
+
+            // Update particles if switch is pressed
+            if (switchPressed) {
+                const positions = particles.geometry.attributes.position.array;
+                const velocities = particles.geometry.attributes.position.array; // Simplified for demo
+                for (let i = 0; i < positions.length; i += 3) {
+                    // Mouse attraction
+                    const dx = mouse.x * 5 - positions[i];
+                    const dy = mouse.y * 5 - positions[i + 1];
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 0.1) {
+                        velocities[i] += dx / (dist * 100);
+                        velocities[i + 1] += dy / (dist * 100);
+                    }
+                    // Update positions
+                    positions[i] += velocities[i];
+                    positions[i + 1] += velocities[i + 1];
+                    positions[i + 2] += velocities[i + 2];
+                    // Boundary check
+                    if (Math.abs(positions[i]) > 10) velocities[i] *= -0.5;
+                    if (Math.abs(positions[i + 1]) > 10) velocities[i + 1] *= -0.5;
+                    if (Math.abs(positions[i + 2]) > 10) velocities[i + 2] *= -0.5;
+                }
+                particles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            // Update WebAssembly physics
+            Module.updatePhysics(orb.position.x, orb.position.y, orb.position.z);
+
+            TWEEN.update();
+            renderer.render(scene, camera);
+        }
+
+        // Load TWEEN.js for smooth transitions
+        const tweenScript = document.createElement('script');
+        tweenScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.min.js';
+        tweenScript.onload = () => {
+            initScene();
+            initPhysics();
+        };
+        document.head.appendChild(tweenScript);
+    </script>
+</body>
+</html>
