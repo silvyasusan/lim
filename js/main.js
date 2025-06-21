@@ -1,4 +1,4 @@
-import Ammo from './js/ammo.js';
+import Ammo from './ammo.js';
 
 Ammo().then((AmmoLib) => {
   const Ammo = AmmoLib;
