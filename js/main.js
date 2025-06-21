@@ -75,88 +75,51 @@ import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/thr
        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
      });
 
-     WebAssembly.instantiateStreaming(fetch('/lim/js/physics.wasm'), {})
-       .then(module => {
-         const Module = module.instance.exports;
-         const animate = () => {
-           requestAnimationFrame(animate);
+     // Fallback with manual movement
+     const keys = {};
+     window.addEventListener('keydown', (event) => { keys[event.key] = true; });
+     window.addEventListener('keyup', (event) => { keys[event.key] = false; });
 
-           Module.ccall('updateOrb', null, ['number'], [1/60]); // Update physics
-           const orbPos = Module.ccall('getOrbPosition', null, [], []); // Get new position
-           if (orbPos && orbPos.length === 3) {
-             orb.position.set(orbPos[0], orbPos[1], orbPos[2]);
+     const animate = () => {
+       requestAnimationFrame(animate);
+
+       // Manual movement with arrow keys
+       const speed = 0.1;
+       if (keys['ArrowUp']) orb.position.z -= speed;
+       if (keys['ArrowDown']) orb.position.z += speed;
+       if (keys['ArrowLeft']) orb.position.x -= speed;
+       if (keys['ArrowRight']) orb.position.x += speed;
+
+       const switchPos = new THREE.Vector3(0, 0, -5);
+       const distance = orb.position.distanceTo(switchPos);
+       switchButton.style.display = distance < 2 ? 'block' : 'none';
+
+       if (roomLit) {
+         ambientLight.intensity = Math.min(ambientLight.intensity + 0.01, 0.5);
+       }
+
+       particles.forEach((p) => {
+         const positions = p.system.geometry.attributes.position.array;
+         for (let i = 0; i < positions.length; i += 3) {
+           positions[i] += p.velocities[i];
+           positions[i + 1] += p.velocities[i + 1];
+           positions[i + 2] += p.velocities[i + 2];
+
+           const dx = mouse.x * 5 - positions[i];
+           const dy = mouse.y * 5 - positions[i + 1];
+           const dist = Math.sqrt(dx * dx + dy * dy);
+           if (dist < 1) {
+             p.velocities[i] += dx * 0.01;
+             p.velocities[i + 1] += dy * 0.01;
            }
 
-           const switchPos = new THREE.Vector3(0, 0, -5);
-           const distance = orb.position.distanceTo(switchPos);
-           switchButton.style.display = distance < 2 ? 'block' : 'none';
-
-           if (roomLit) {
-             ambientLight.intensity = Math.min(ambientLight.intensity + 0.01, 0.5);
-           }
-
-           particles.forEach((p) => {
-             const positions = p.system.geometry.attributes.position.array;
-             for (let i = 0; i < positions.length; i += 3) {
-               positions[i] += p.velocities[i];
-               positions[i + 1] += p.velocities[i + 1];
-               positions[i + 2] += p.velocities[i + 2];
-
-               const dx = mouse.x * 5 - positions[i];
-               const dy = mouse.y * 5 - positions[i + 1];
-               const dist = Math.sqrt(dx * dx + dy * dy);
-               if (dist < 1) {
-                 p.velocities[i] += dx * 0.01;
-                 p.velocities[i + 1] += dy * 0.01;
-               }
-
-               if (Math.abs(positions[i]) > 10) p.velocities[i] *= -0.9;
-               if (Math.abs(positions[i + 1]) > 10) p.velocities[i + 1] *= -0.9;
-               if (Math.abs(positions[i + 2]) > 10) p.velocities[i + 2] *= -0.9;
-             }
-             p.system.geometry.attributes.position.needsUpdate = true;
-           });
-
-           renderer.render(scene, camera);
-         };
-         animate();
-       })
-       .catch(error => {
-         console.error('WebAssembly loading failed, using static fallback:', error);
-         const animate = () => {
-           requestAnimationFrame(animate);
-           orb.rotation.y += 0.01; // Rotate for visibility
-           const switchPos = new THREE.Vector3(0, 0, -5);
-           const distance = orb.position.distanceTo(switchPos);
-           switchButton.style.display = distance < 2 ? 'block' : 'none';
-
-           if (roomLit) {
-             ambientLight.intensity = Math.min(ambientLight.intensity + 0.01, 0.5);
-           }
-
-           particles.forEach((p) => {
-             const positions = p.system.geometry.attributes.position.array;
-             for (let i = 0; i < positions.length; i += 3) {
-               positions[i] += p.velocities[i];
-               positions[i + 1] += p.velocities[i + 1];
-               positions[i + 2] += p.velocities[i + 2];
-
-               const dx = mouse.x * 5 - positions[i];
-               const dy = mouse.y * 5 - positions[i + 1];
-               const dist = Math.sqrt(dx * dx + dy * dy);
-               if (dist < 1) {
-                 p.velocities[i] += dx * 0.01;
-                 p.velocities[i + 1] += dy * 0.01;
-               }
-
-               if (Math.abs(positions[i]) > 10) p.velocities[i] *= -0.9;
-               if (Math.abs(positions[i + 1]) > 10) p.velocities[i + 1] *= -0.9;
-               if (Math.abs(positions[i + 2]) > 10) p.velocities[i + 2] *= -0.9;
-             }
-             p.system.geometry.attributes.position.needsUpdate = true;
-           });
-
-           renderer.render(scene, camera);
-         };
-         animate();
+           if (Math.abs(positions[i]) > 10) p.velocities[i] *= -0.9;
+           if (Math.abs(positions[i + 1]) > 10) p.velocities[i + 1] *= -0.9;
+           if (Math.abs(positions[i + 2]) > 10) p.velocities[i + 2] *= -0.9;
+         }
+         p.system.geometry.attributes.position.needsUpdate = true;
        });
+
+       renderer.render(scene, camera);
+     };
+     animate();
