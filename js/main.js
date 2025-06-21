@@ -75,22 +75,105 @@ window.addEventListener('mousemove', (event) => {
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 });
 
-import('./ammo.js').then((AmmoModule) => {
-  if (AmmoModule && typeof AmmoModule === 'object' && AmmoModule.hasOwnProperty('default')) {
-    AmmoModule.default().then((AmmoLib) => {
-      const Ammo = AmmoLib;
-      const physicsWorld = new Ammo.btDiscreteDynamicsWorld();
-      physicsWorld.setGravity(new Ammo.btVector3(0, -9.8, 0));
+(async () => {
+  try {
+    const AmmoModule = await import('./ammo.js');
+    if (AmmoModule && typeof AmmoModule === 'object') {
+      // Check if AmmoModule has a default export that’s a function
+      if (AmmoModule.default && typeof AmmoModule.default === 'function') {
+        const AmmoLib = await AmmoModule.default();
+        const Ammo = AmmoLib;
+        const physicsWorld = new Ammo.btDiscreteDynamicsWorld();
+        physicsWorld.setGravity(new Ammo.btVector3(0, -9.8, 0));
 
+        const animate = () => {
+          requestAnimationFrame(animate);
+
+          // Update physics (to be implemented)
+          physicsWorld.stepSimulation(1 / 60, 10);
+
+          // Placeholder for orb position
+          orb.position.set(0, 0, 0); // Replace with Ammo.js physics position
+
+          const switchPos = new THREE.Vector3(0, 0, -5);
+          const distance = orb.position.distanceTo(switchPos);
+          switchButton.style.display = distance < 2 ? 'block' : 'none';
+
+          if (roomLit) {
+            ambientLight.intensity = Math.min(ambientLight.intensity + 0.01, 0.5);
+          }
+
+          particles.forEach((p) => {
+            const positions = p.system.geometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) {
+              positions[i] += p.velocities[i];
+              positions[i + 1] += p.velocities[i + 1];
+              positions[i + 2] += p.velocities[i + 2];
+
+              const dx = mouse.x * 5 - positions[i];
+              const dy = mouse.y * 5 - positions[i + 1];
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < 1) {
+                p.velocities[i] += dx * 0.01;
+                p.velocities[i + 1] += dy * 0.01;
+              }
+
+              if (Math.abs(positions[i]) > 10) p.velocities[i] *= -0.9;
+              if (Math.abs(positions[i + 1]) > 10) p.velocities[i + 1] *= -0.9;
+              if (Math.abs(positions[i + 2]) > 10) p.velocities[i + 2] *= -0.9;
+            }
+            p.system.geometry.attributes.position.needsUpdate = true;
+          });
+
+          renderer.render(scene, camera);
+        };
+        animate();
+      } else {
+        console.error('Ammo.js default export is not a function:', AmmoModule.default);
+        // Fallback to static animation
+        const animate = () => {
+          requestAnimationFrame(animate);
+          orb.position.set(0, 0, 0);
+          const switchPos = new THREE.Vector3(0, 0, -5);
+          const distance = orb.position.distanceTo(switchPos);
+          switchButton.style.display = distance < 2 ? 'block' : 'none';
+
+          if (roomLit) {
+            ambientLight.intensity = Math.min(ambientLight.intensity + 0.01, 0.5);
+          }
+
+          particles.forEach((p) => {
+            const positions = p.system.geometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) {
+              positions[i] += p.velocities[i];
+              positions[i + 1] += p.velocities[i + 1];
+              positions[i + 2] += p.velocities[i + 2];
+
+              const dx = mouse.x * 5 - positions[i];
+              const dy = mouse.y * 5 - positions[i + 1];
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < 1) {
+                p.velocities[i] += dx * 0.01;
+                p.velocities[i + 1] += dy * 0.01;
+              }
+
+              if (Math.abs(positions[i]) > 10) p.velocities[i] *= -0.9;
+              if (Math.abs(positions[i + 1]) > 10) p.velocities[i + 1] *= -0.9;
+              if (Math.abs(positions[i + 2]) > 10) p.velocities[i + 2] *= -0.9;
+            }
+            p.system.geometry.attributes.position.needsUpdate = true;
+          });
+
+          renderer.render(scene, camera);
+        };
+        animate();
+      }
+    } else {
+      console.error('Ammo.js module is not an object:', AmmoModule);
+      // Fallback to static animation
       const animate = () => {
         requestAnimationFrame(animate);
-
-        // Update physics (to be implemented)
-        physicsWorld.stepSimulation(1 / 60, 10);
-
-        // Placeholder for orb position
-        orb.position.set(0, 0, 0); // Replace with Ammo.js physics position
-
+        orb.position.set(0, 0, 0);
         const switchPos = new THREE.Vector3(0, 0, -5);
         const distance = orb.position.distanceTo(switchPos);
         switchButton.style.display = distance < 2 ? 'block' : 'none';
@@ -124,10 +207,10 @@ import('./ammo.js').then((AmmoModule) => {
         renderer.render(scene, camera);
       };
       animate();
-    }).catch(error => console.error('Ammo.js initialization failed:', error));
-  } else {
-    console.error('Ammo.js module structure unexpected:', AmmoModule);
-    // Fallback to static animation if Ammo fails
+    }
+  } catch (error) {
+    console.error('Ammo.js module load failed:', error);
+    // Fallback to static animation
     const animate = () => {
       requestAnimationFrame(animate);
       orb.position.set(0, 0, 0);
@@ -165,4 +248,4 @@ import('./ammo.js').then((AmmoModule) => {
     };
     animate();
   }
-}).catch(error => console.error('Ammo.js module load failed:', error));
+})();
