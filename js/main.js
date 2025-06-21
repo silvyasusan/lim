@@ -75,12 +75,9 @@ window.addEventListener('mousemove', (event) => {
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 });
 
-Ammo().then((AmmoLib) => {
-  Ammo = AmmoLib;
-  const physicsWorld = new Ammo.btDiscreteDynamicsWorld();
-  physicsWorld.setGravity(new Ammo.btVector3(0, -9.8, 0));
-
-  Module.onRuntimeInitialized = () => {
+WebAssembly.instantiateStreaming(fetch('/js/physics.wasm'), {})
+  .then(module => {
+    const Module = module.instance.exports;
     const animate = () => {
       requestAnimationFrame(animate);
 
@@ -121,5 +118,5 @@ Ammo().then((AmmoLib) => {
       renderer.render(scene, camera);
     };
     animate();
-  };
-});
+  })
+  .catch(error => console.error('WebAssembly loading failed:', error));
